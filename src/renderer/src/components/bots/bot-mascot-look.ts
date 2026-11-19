@@ -48,7 +48,7 @@ export function dressMascotSvg(svg: string, outfit: BotOutfitLayer): string {
 const MAX_LOOKS = 300
 const looks = new Map<string, string>()
 const loading = new Set<string>()
-// Bumped whenever a recolored picture is ready, so readers render again.
+// Bumped whenever a look is ready, so readers render again.
 let version = 0
 const listeners = new Set<() => void>()
 
