@@ -40,7 +40,7 @@ vi.mock('./bot-workspace', () => ({ useBotForWorkspace: () => bot }))
 const host = vi.hoisted(() => ({ offline: false }))
 vi.mock('@/lib/bot-host-views', () => ({ useBotHostOffline: () => host.offline }))
 vi.mock('./use-bot-now', () => ({
-  useBotNow: () => ({ needs: [], stoppedForSignIn: [], work: [], needsYou: 0, working: 0 }),
+  useBotNow: () => ({ needs: [], stoppedForSignIn: [], needsYou: 0, working: 0 }),
   useBotNeedsYouCount: () => 0
 }))
 vi.mock('./bot-session-open', () => ({ openBotSession: opened }))
@@ -222,12 +222,5 @@ describe('the Chats tab', () => {
     expect(screen.getByText(/Couldn't read this bot's chats/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(retry).toHaveBeenCalledTimes(1)
-  })
-
-  it('sends an older host to Activity, where its work still shows', () => {
-    showTree({ state: 'unsupported' })
-    renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'See its work in Items' }))
-    expect(useAppStore.getState().rightSidebarTab).toBe('bot-activity')
   })
 })
