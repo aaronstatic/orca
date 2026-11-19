@@ -1,6 +1,8 @@
 // Reading an image-capable agent's one-off run: where its image went, and why it failed.
 import type { AvatarGenerationFailure } from '../../shared/avatar-generation/avatar-generation-contract'
 
+const SAFE_ID = /^[A-Za-z0-9-]+$/
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -29,10 +31,37 @@ export function codexThreadId(stdout: string): string | null {
   for (const record of jsonLines(stdout)) {
     if (record.type === 'thread.started' && typeof record.thread_id === 'string') {
       // The id becomes a path segment, so only accept what Codex actually issues.
-      return /^[A-Za-z0-9-]+$/.test(record.thread_id) ? record.thread_id : null
+      return SAFE_ID.test(record.thread_id) ? record.thread_id : null
     }
   }
   return null
+}
+
+function collectConversationIds(value: unknown, into: string[]): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectConversationIds(entry, into))
+    return
+  }
+  if (!isRecord(value)) {
+    return
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === 'conversation_id' && typeof entry === 'string') {
+      if (SAFE_ID.test(entry) && !into.includes(entry)) {
+        into.push(entry)
+      }
+    } else {
+      collectConversationIds(entry, into)
+    }
+  }
+}
+
+/** agy's stream-json conversation ids, its own first: each names a folder under its home. */
+export function antigravityConversationIds(stdout: string): string[] {
+  const ids: string[] = []
+  // Only ids that pass SAFE_ID become path segments.
+  jsonLines(stdout).forEach((record) => collectConversationIds(record, ids))
+  return ids
 }
 
 function grokToolPath(text: string): string | null {
@@ -89,17 +118,28 @@ function stringField(record: Record<string, unknown>, key: string): string {
 /** Only error events' messages: usage events carry bare numbers like 401 or 429 tokens. */
 export function agentErrorText(stdout: string): string {
   return jsonLines(stdout)
-    .filter((record) => record.type === 'error' || record.type === 'turn.failed')
-    .map((record) => `${stringField(record, 'message')} ${stringField(record, 'error')}`)
+    .flatMap((record) => {
+      if (record.type === 'error' || record.type === 'turn.failed' || record.event === 'error') {
+        return [`${stringField(record, 'message')} ${stringField(record, 'error')}`]
+      }
+      // agy ends with one result event; anything but SUCCESS carries why.
+      const result = record.event === 'result' ? record.result : null
+      return isRecord(result) && result.status !== 'SUCCESS'
+        ? [`${stringField(result, 'error')} ${stringField(result, 'response')}`]
+        : []
+    })
     .join('\n')
 }
 
-/** What the agent said back: Codex agent messages, or Grok's streamed text. */
+/** What the agent said back: Codex agent messages, Grok's streamed text, or agy's result. */
 export function agentReplyText(stdout: string): string {
   return jsonLines(stdout)
     .map((record) => {
       if (record.type === 'text' && typeof record.data === 'string') {
         return record.data
+      }
+      if (record.event === 'result' && isRecord(record.result)) {
+        return `${stringField(record.result, 'response')}\n`
       }
       const item = record.type === 'item.completed' ? record.item : null
       return isRecord(item) && item.type === 'agent_message' && typeof item.text === 'string'

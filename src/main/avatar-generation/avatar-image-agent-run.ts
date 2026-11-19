@@ -17,6 +17,7 @@ import { spawnSourceControlAgent } from '../text-generation/execution/source-con
 import { killSourceControlAgentProcess } from '../text-generation/execution/source-control-agent-termination'
 import {
   agentErrorText,
+  antigravityConversationIds,
   agentReplyText,
   classifyAvatarAgentFailure,
   codexThreadId,
@@ -45,24 +46,69 @@ export type AvatarRunOutcome =
   | { ok: true; image: GeneratedAvatarImage }
   | { ok: false; error: AvatarGenerationFailure }
 
-function agentArgs(agent: AvatarImageAgent, cwd: string): string[] {
-  return agent === 'codex'
-    ? // Read-only: the image tool saves under CODEX_HOME by itself; the run needs no shell or writes.
-      ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '-s', 'read-only', '-C', cwd, '-']
-    : // The image tool is the only tool, and dontAsk refuses anything else whatever the user's config.
-      [
-        '--prompt-file',
-        join(cwd, PROMPT_FILE),
-        '--permission-mode',
-        'dontAsk',
-        '--tools',
-        'image_gen',
-        '--disable-web-search',
-        '--output-format',
-        'streaming-json',
-        '--cwd',
-        cwd
-      ]
+const AGENT_BINARIES: Record<AvatarImageAgent, string> = {
+  codex: 'codex',
+  grok: 'grok',
+  antigravity: 'agy'
+}
+
+// agy makes images only through its built-in image-generator subagent, which saves under its own home.
+const ANTIGRAVITY_IMAGE_STEER =
+  'Use the image-generator subagent for this and wait for it to finish. Do not copy, move or save the image yourself.'
+
+function agentArgs(agent: AvatarImageAgent, cwd: string, prompt: string): string[] {
+  if (agent === 'codex') {
+    // Read-only: the image tool saves under CODEX_HOME by itself; the run needs no shell or writes.
+    return [
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--ephemeral',
+      '-s',
+      'read-only',
+      '-C',
+      cwd,
+      '-'
+    ]
+  }
+  if (agent === 'antigravity') {
+    // Headless agy denies every tool that would ask for approval, so it can't run commands or write files.
+    return [
+      '-p',
+      `${ANTIGRAVITY_IMAGE_STEER} ${prompt}`,
+      '--output-format',
+      'stream-json',
+      '--print-timeout',
+      '230s'
+    ]
+  }
+  // The image tool is the only tool, and dontAsk refuses anything else whatever the user's config.
+  return [
+    '--prompt-file',
+    join(cwd, PROMPT_FILE),
+    '--permission-mode',
+    'dontAsk',
+    '--tools',
+    'image_gen',
+    '--disable-web-search',
+    '--output-format',
+    'streaming-json',
+    '--cwd',
+    cwd
+  ]
+}
+
+/** agy keeps each conversation's files under brain/<id> and its record in conversations/<id>.db. */
+function antigravityHome(): string {
+  return join(homedir(), '.gemini', 'antigravity-cli')
+}
+
+function antigravityRunFiles(stdout: string): string[] {
+  const home = antigravityHome()
+  return antigravityConversationIds(stdout).flatMap((id) => [
+    join(home, 'brain', id),
+    ...['.db', '.db-wal', '.db-shm'].map((suffix) => join(home, 'conversations', `${id}${suffix}`))
+  ])
 }
 
 function codexImagesDir(stdout: string, env: NodeJS.ProcessEnv | undefined): string | null {
@@ -126,6 +172,16 @@ async function imagePath(
     const real = await realpath(path).catch(() => null)
     return real && grokSessionDirs.some((dir) => isInside(dir, real)) ? real : null
   }
+  if (agent === 'antigravity') {
+    // The main conversation holds the image; its subagents' folders are a fallback.
+    for (const id of antigravityConversationIds(stdout)) {
+      const path = await newestImageIn(join(antigravityHome(), 'brain', id))
+      if (path) {
+        return path
+      }
+    }
+    return null
+  }
   const directory = codexImagesDir(stdout, env)
   return directory ? newestImageIn(directory) : null
 }
@@ -168,8 +224,8 @@ export async function runAvatarImageAgent(input: {
       let child: ReturnType<typeof spawnSourceControlAgent>
       try {
         child = spawnSourceControlAgent({
-          binary: agent,
-          args: agentArgs(agent, cwd),
+          binary: AGENT_BINARIES[agent],
+          args: agentArgs(agent, cwd, prompt),
           cwd,
           env,
           stdinMode: agent === 'codex' ? 'pipe' : 'ignore',
@@ -234,7 +290,12 @@ export async function runAvatarImageAgent(input: {
     // must not pile up or show in session history.
     const grokSessionDirs = agent === 'grok' ? await grokRunSessionDirs(cwd, env) : []
     const codexDir = agent === 'codex' ? codexImagesDir(exit.stdout, env) : null
-    cleanup = codexDir ? [codexDir] : grokSessionDirs
+    cleanup =
+      agent === 'antigravity'
+        ? antigravityRunFiles(exit.stdout)
+        : codexDir
+          ? [codexDir]
+          : grokSessionDirs
     if (signal.aborted) {
       return { ok: false, error: 'canceled' }
     }

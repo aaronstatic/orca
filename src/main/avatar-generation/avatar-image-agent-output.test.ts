@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { codexImageGenerationEnabled } from './avatar-generation-capability'
 import {
   agentErrorText,
+  antigravityConversationIds,
   classifyAvatarAgentFailure,
   codexThreadId,
   grokImagePaths
@@ -62,7 +63,32 @@ describe('grokImagePaths', () => {
   })
 })
 
+describe('antigravityConversationIds', () => {
+  it('lists the run conversation first, then its subagents, and drops unsafe ids', () => {
+    const stdout = [
+      JSON.stringify({ event: 'init', conversation_id: 'main-1', init: { cwd: '/tmp/x' } }),
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'main-1',
+          subagent_info: { subagents: [{ type_name: 'image-generator', conversation_id: 'sub-2' }] }
+        }
+      }),
+      JSON.stringify({ event: 'step_update', step_update: { conversation_id: '../../etc' } })
+    ].join('\n')
+    expect(antigravityConversationIds(stdout)).toEqual(['main-1', 'sub-2'])
+  })
+})
+
 describe('agentErrorText', () => {
+  it('reads an agy result that did not succeed', () => {
+    const stdout = JSON.stringify({
+      event: 'result',
+      result: { status: 'ERROR', error: 'You have reached your quota limit.' }
+    })
+    expect(agentErrorText(stdout).trim()).toBe('You have reached your quota limit.')
+  })
+
   it('reads error events and skips token counts that look like status codes', () => {
     const stdout = [
       '{"type":"turn.completed","usage":{"input_tokens":401,"output_tokens":429}}',

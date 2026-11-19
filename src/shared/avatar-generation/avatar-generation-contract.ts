@@ -1,7 +1,7 @@
 // Generating an avatar with an image-capable agent the user already has installed and signed in.
 
 /** Agents whose CLI can save a generated image without a prompt, in preference order. */
-export const AVATAR_IMAGE_AGENTS = ['codex', 'grok'] as const
+export const AVATAR_IMAGE_AGENTS = ['codex', 'grok', 'antigravity'] as const
 export type AvatarImageAgent = (typeof AVATAR_IMAGE_AGENTS)[number]
 
 export type AvatarImageAgentStatus = { agent: AvatarImageAgent; status: 'ready' | 'signed-out' }
@@ -22,11 +22,9 @@ export type AvatarGenerationFailure =
 export type GeneratedAvatarImage = { mimeType: string; base64: string }
 
 export type AvatarGenerationResult =
-  | { ok: true; agent: AvatarImageAgent; images: GeneratedAvatarImage[] }
+  | { ok: true; agent: AvatarImageAgent; image: GeneratedAvatarImage }
   | { ok: false; error: AvatarGenerationFailure; agent?: AvatarImageAgent }
 
-/** Each click asks for this many options to pick from. */
-export const AVATAR_GENERATION_VARIANTS = 2
 export const MAX_AVATAR_DESCRIPTION_CHARS = 500
 
 export type AvatarGenerationApi = {

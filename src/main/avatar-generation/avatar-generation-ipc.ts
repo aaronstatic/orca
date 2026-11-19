@@ -3,7 +3,6 @@
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import {
-  AVATAR_GENERATION_VARIANTS,
   AVATAR_IMAGE_AGENTS,
   MAX_AVATAR_DESCRIPTION_CHARS,
   type AvatarGenerationCapability,
@@ -21,7 +20,7 @@ import {
   probeAvatarGenerationCapability,
   type AvatarAgentEnv
 } from './avatar-generation-capability'
-import { runAvatarImageAgent, type AvatarRunOutcome } from './avatar-image-agent-run'
+import { runAvatarImageAgent } from './avatar-image-agent-run'
 
 const GenerateArgs = z.object({
   requestId: z.string().min(1).max(128),
@@ -32,20 +31,6 @@ const CancelArgs = z.object({ requestId: z.string().min(1).max(128) })
 
 // Sign-in can change while the picker is open, so a probe is reused only briefly.
 const CAPABILITY_TTL_MS = 30_000
-
-/** First failure worth telling the user about when no option came back. */
-function combinedFailure(outcomes: AvatarRunOutcome[]): AvatarGenerationResult {
-  const errors = outcomes.flatMap((outcome) => (outcome.ok ? [] : [outcome.error]))
-  const order = [
-    'canceled',
-    'usage-limit',
-    'signed-out',
-    'real-person',
-    'timed-out',
-    'no-image'
-  ] as const
-  return { ok: false, error: order.find((error) => errors.includes(error)) ?? 'failed' }
-}
 
 export function registerAvatarGenerationHandlers(
   agentEnvironment: () => CommitMessageAgentEnvironmentResolvers | undefined
@@ -114,27 +99,23 @@ export function registerAvatarGenerationHandlers(
           return { ok: false, error: 'failed', agent }
         }
         const prompt = avatarGenerationPrompt(description)
-        // Separate runs in parallel: one image each, so two options take as long as one.
-        const outcomes = await Promise.all(
-          Array.from({ length: AVATAR_GENERATION_VARIANTS }, () =>
-            runAvatarImageAgent({ agent, prompt, env, signal: controller.signal })
-          )
-        )
+        const outcome = await runAvatarImageAgent({
+          agent,
+          prompt,
+          env,
+          signal: controller.signal
+        })
         if (controller.signal.aborted) {
           return { ok: false, error: 'canceled', agent }
         }
-        const images = outcomes.flatMap((outcome) => (outcome.ok ? [outcome.image] : []))
-        if (images.length > 0) {
-          return { ok: true, agent, images }
+        if (outcome.ok) {
+          return { ok: true, agent, image: outcome.image }
         }
-        const failure = combinedFailure(outcomes)
-        if (!failure.ok && failure.error === 'signed-out') {
+        if (outcome.error === 'signed-out') {
           cached = null
         }
-        return { ...failure, agent }
+        return { ok: false, error: outcome.error, agent }
       } finally {
-        // A run that threw must not leave its sibling spending usage for nobody.
-        controller.abort()
         if (runs.get(requestId) === controller) {
           runs.delete(requestId)
         }

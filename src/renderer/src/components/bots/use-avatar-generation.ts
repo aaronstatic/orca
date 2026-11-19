@@ -16,11 +16,9 @@ import { pickAvatarAgent } from '../../../../shared/avatar-generation/avatar-gen
 export type AvatarGenerationState =
   | { kind: 'idle' }
   | { kind: 'running'; agent: AvatarImageAgent; startedAt: number }
-  | { kind: 'options'; images: AvatarOption[] }
+  /** `src` is a data URL. */
+  | { kind: 'result'; src: string }
   | { kind: 'error'; failure: AvatarGenerationFailure; agent?: AvatarImageAgent }
-
-/** `src` is a data URL. */
-export type AvatarOption = { id: string; src: string }
 
 function generationApi(): AvatarGenerationApi | null {
   // Desktop only: a paired web or phone client has no local agents to run.
@@ -116,11 +114,8 @@ export function useAvatarGeneration(): {
           // A run that worked proves the agent ready, whatever an older probe said.
           setStatus(result.agent, 'ready')
           setState({
-            kind: 'options',
-            images: result.images.map((image) => ({
-              id: createNonSecureContextUuid(),
-              src: `data:${image.mimeType};base64,${image.base64}`
-            }))
+            kind: 'result',
+            src: `data:${result.image.mimeType};base64,${result.image.base64}`
           })
         } else if (result.error === 'canceled') {
           setState({ kind: 'idle' })

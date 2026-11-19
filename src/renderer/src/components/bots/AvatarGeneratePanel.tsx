@@ -1,7 +1,7 @@
-// The picker's Generate tab: describe an avatar, a local agent makes two options, pick one.
+// The picker's Generate tab: pick an agent, describe an avatar, use the image it makes.
 import React, { useEffect, useState } from 'react'
 import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
-import { CircleAlert, Pencil, RotateCw, Sparkles, X } from 'lucide-react'
+import { Check, CircleAlert, Pencil, RotateCw, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Textarea } from '@/components/ui/textarea'
@@ -9,7 +9,6 @@ import { useTranslate } from '@/i18n/use-translate'
 import AgentCombobox from '@/components/agent/AgentCombobox'
 import { getAgentCatalog, getAgentLabel } from '@/lib/agent-catalog/agent-catalog'
 import {
-  AVATAR_GENERATION_VARIANTS,
   AVATAR_IMAGE_AGENTS,
   MAX_AVATAR_DESCRIPTION_CHARS,
   type AvatarGenerationFailure,
@@ -131,27 +130,16 @@ export function AvatarGeneratePanel({
         allowNarrowTrigger
         triggerClassName="w-full"
       />
-      {state.kind === 'options' ? (
-        <div className="flex flex-col items-center gap-1.5">
-          <div className="flex justify-center gap-3">
-            {state.images.map((image, index) => (
-              <button
-                key={image.id}
-                type="button"
-                onClick={() => onPick(image.src)}
-                aria-label={t('bots.avatar.generate.useOption', 'Use option {{n}}', {
-                  n: index + 1
-                })}
-                className="overflow-hidden rounded-xl outline-none ring-offset-2 ring-offset-popover transition-shadow hover:ring-2 hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              >
-                <img src={image.src} alt="" className="size-28 object-cover" />
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('bots.avatar.generate.pickOne', 'Pick one to use it')}
-          </p>
-        </div>
+      {state.kind === 'result' ? (
+        // Clicking the image uses it too, like the Use this button.
+        <button
+          type="button"
+          onClick={() => onPick(state.src)}
+          aria-label={t('bots.avatar.generate.use', 'Use this')}
+          className="self-center overflow-hidden rounded-xl outline-none ring-offset-2 ring-offset-popover transition-shadow hover:ring-2 hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <img src={state.src} alt="" className="size-32 object-cover" />
+        </button>
       ) : (
         <Textarea
           value={description}
@@ -191,16 +179,22 @@ export function AvatarGeneratePanel({
             {t('bots.avatar.generate.cancel', 'Cancel')}
           </Button>
         </div>
-      ) : state.kind === 'options' ? (
-        <div className="flex gap-2">
-          <Button type="button" variant="ghost" size="xs" className="flex-1" onClick={onEdit}>
-            <Pencil />
-            {t('bots.avatar.generate.edit', 'Change description')}
+      ) : state.kind === 'result' ? (
+        <div className="flex flex-col gap-1.5">
+          <Button type="button" size="sm" onClick={() => onPick(state.src)}>
+            <Check />
+            {t('bots.avatar.generate.use', 'Use this')}
           </Button>
-          <Button type="button" variant="outline" size="xs" className="flex-1" onClick={onGenerate}>
-            <RotateCw />
-            {t('bots.avatar.generate.again', 'Generate again')}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" size="xs" className="flex-1" onClick={onEdit}>
+              <Pencil />
+              {t('bots.avatar.generate.edit', 'Change description')}
+            </Button>
+            <Button type="button" variant="ghost" size="xs" className="flex-1" onClick={onGenerate}>
+              <RotateCw />
+              {t('bots.avatar.generate.again', 'Generate again')}
+            </Button>
+          </div>
         </div>
       ) : (
         <Button type="button" size="sm" disabled={!description.trim()} onClick={onGenerate}>
@@ -213,15 +207,7 @@ export function AvatarGeneratePanel({
           <CircleAlert className="mt-px size-3.5 shrink-0" />
           {failureMessage(state.kind === 'error' ? state.failure : 'signed-out', agentLabel)}
         </p>
-      ) : (
-        <p className="text-center text-xs text-muted-foreground">
-          {t(
-            'bots.avatar.generate.note',
-            'Uses {{agent}} on this computer and counts toward its usage. Makes {{count}} options.',
-            { agent: agentLabel, count: AVATAR_GENERATION_VARIANTS }
-          )}
-        </p>
-      )}
+      ) : null}
     </div>
   )
 }

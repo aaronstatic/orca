@@ -248,7 +248,7 @@ async function artBase64(): Promise<string> {
 /** A local image agent that answers as `result` says, or never (still running). */
 function stubGeneration(
   capability: AvatarGenerationCapability,
-  result: 'options' | 'running' | 'usage-limit'
+  result: 'image' | 'running' | 'usage-limit'
 ): () => void {
   return () => {
     stubUpload()
@@ -261,14 +261,10 @@ function stubGeneration(
         if (result === 'usage-limit') {
           return { ok: false, error: 'usage-limit', agent: 'codex' }
         }
-        const base64 = await artBase64()
         return {
           ok: true,
           agent: 'codex',
-          images: [
-            { mimeType: 'image/png', base64 },
-            { mimeType: 'image/png', base64 }
-          ]
+          image: { mimeType: 'image/png', base64: await artBase64() }
         }
       },
       cancel: async () => {}
@@ -304,13 +300,14 @@ async function openGenerate(frame: HTMLElement, description?: string): Promise<v
 const READY: AvatarGenerationCapability = {
   agents: [
     { agent: 'codex', status: 'ready' },
-    { agent: 'grok', status: 'ready' }
+    { agent: 'grok', status: 'ready' },
+    { agent: 'antigravity', status: 'ready' }
   ]
 }
 
 export const generateIdle = defineFixture({
   width: 420,
-  setup: stubGeneration(READY, 'options'),
+  setup: stubGeneration(READY, 'image'),
   render: () => <Settings />,
   interact: (frame) => openGenerate(frame)
 })
@@ -322,9 +319,9 @@ export const generateRunning = defineFixture({
   interact: (frame) => openGenerate(frame, 'a friendly orange fox astronaut')
 })
 
-export const generateOptions = defineFixture({
+export const generateResult = defineFixture({
   width: 420,
-  setup: stubGeneration(READY, 'options'),
+  setup: stubGeneration(READY, 'image'),
   render: () => <Settings />,
   interact: (frame) => openGenerate(frame, 'a friendly orange fox astronaut')
 })
@@ -338,21 +335,21 @@ export const generateUsageLimit = defineFixture({
 
 export const generateRealPerson = defineFixture({
   width: 420,
-  setup: stubGeneration(READY, 'options'),
+  setup: stubGeneration(READY, 'image'),
   render: () => <Settings />,
   interact: (frame) => openGenerate(frame, 'me as a superhero')
 })
 
 export const generateSignedOut = defineFixture({
   width: 420,
-  setup: stubGeneration({ agents: [{ agent: 'codex', status: 'signed-out' }] }, 'options'),
+  setup: stubGeneration({ agents: [{ agent: 'codex', status: 'signed-out' }] }, 'image'),
   render: () => <Settings />,
   interact: (frame) => openGenerate(frame)
 })
 
 export const generateAgentPicker = defineFixture({
   width: 420,
-  setup: stubGeneration(READY, 'options'),
+  setup: stubGeneration(READY, 'image'),
   render: () => <Settings />,
   interact: async (frame) => {
     await openGenerate(frame)

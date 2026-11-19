@@ -85,6 +85,16 @@ export type AvatarAgentEnv = (
   agent: AvatarImageAgent
 ) => Promise<NodeJS.ProcessEnv | undefined | null>
 
+// agy has no sign-in status command; a signed-out run says so itself, and that shows as signed out.
+async function probeAntigravity(env: NodeJS.ProcessEnv | undefined): Promise<AgentProbe> {
+  return (await quickOutput('agy', ['--version'], env)) === null ? 'unavailable' : 'ready'
+}
+
+const AGENT_PROBES: Record<
+  AvatarImageAgent,
+  (env: NodeJS.ProcessEnv | undefined) => Promise<AgentProbe>
+> = { codex: probeCodex, grok: probeGrok, antigravity: probeAntigravity }
+
 export async function probeAvatarGenerationCapability(
   envFor: AvatarAgentEnv
 ): Promise<AvatarGenerationCapability> {
@@ -94,7 +104,7 @@ export async function probeAvatarGenerationCapability(
       if (env === null) {
         return { agent, probe: 'unavailable' as const }
       }
-      return { agent, probe: await (agent === 'codex' ? probeCodex(env) : probeGrok(env)) }
+      return { agent, probe: await AGENT_PROBES[agent](env) }
     })
   )
   return {
